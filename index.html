@@ -1,0 +1,167 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html>
+<head>
+    <link rel="canonical" href="{{ room_link }}"/>
+    <link rel="stylesheet" type="text/css" href="css/main.css"/>
+    <script src="/_ah/channel/jsapi"></script>
+</head>
+<body>
+<script type="text/javascript" src="js/SignalingChannel.js" />
+<!--script type="text/javascript" src="rtc.js"></script -->
+<script type="text/javascript">
+    var pc;
+    var localWebcam;
+    var remoteWebcam;
+
+    var numCandidatesSent = 0;
+    var maxCandidatesToSend = 10;
+    var numCandidatesFound = 0;
+
+    var signalingChannel;
+
+    var remoteSessionDescription;
+
+    var printProperties = function(o){
+        console.log("Printing properties for " + o);
+        for(var property in o){
+            console.log(property + ": " + o[property]);
+        }
+    };
+
+    window.onload = function () {
+        //Get local webcam videoElement
+        localWebcam = document.getElementById("localVideo");
+        remoteWebcam = document.getElementById("remoteVideo");
+
+        //Create signaling channel
+        console.log("Initializing signaling channel");
+        signalingChannel = new SignalingChannel('{{ room_key }}', '{{ me }}', '{{ token }}');
+        signalingChannel.initialize();
+
+        openMediaSession();
+
+    };
+
+    var onMediaError = function(error) {
+        console.log("Failed to get access to local media. Error code was " + error.code);
+    }
+
+    var onMediaSuccess = function(localStream){
+        console.log("Setting local webcam");
+        localWebcam.src = webkitURL.createObjectURL(localStream);
+        pc = new webkitPeerConnection00("STUN stun.l.google.com:19302",
+                function (candidate/*, moreToFollow*/) {
+                    //console.log("ice callback: candidate: " + candidate + ", moreToFollow: " + moreToFollow);
+                    //if(!moreToFollow){
+                    if(numCandidatesSent < maxCandidatesToSend){
+                        console.log("Properties of candidate:");
+                        printProperties(candidate);
+
+                        //console.log(candidate.toSdp());
+                        if(candidate !== null){
+                            console.log("Sending candidate: " + candidate.toSdp());
+                            //remoteSessionDescription.addCandidate(candidate);
+                            signalingChannel.send(JSON.stringify({ "type": "candidate", "candidate": {label: candidate.label, sdp: candidate.toSdp()} }));
+                        }
+                        numCandidatesSent++;
+                        if(numCandidatesSent === maxCandidatesToSend)
+                            console.log(numCandidatesFound);
+
+                    }
+                });
+                pc.addStream(localStream);
+                if({{initiator}}){
+                    console.log("Starting ice");
+
+                    offer = pc.createOffer({has_video: true, has_audio: true});
+                    //printProperties(offer);
+                    console.log("Created offer: " + offer);
+
+                    pc.setLocalDescription(webkitPeerConnection00.SDP_OFFER, offer);
+                    //console.log(offer.toSdp());
+                    console.log("sending offer to answerer");
+                    signalingChannel.send(JSON.stringify({ "type": "offer", "sdp": offer.toSdp() }));
+                }
+
+                pc.onaddstream = function(evt){
+                    console.log("Adding remote stream " + evt.stream);
+                    remoteWebcam.src = webkitURL.createObjectURL(evt.stream);
+                };
+
+                pc.onopen = function(){
+                    console.log("Session started");
+                };
+
+                signalingChannel.onIncomingMessage(function (evt) {
+                    var msg = JSON.parse(evt.data);
+
+                    if (msg.type == "answer") {
+                        // if the answer corresponds to an updated offer (i.e. not the initial offer),
+                        // we need to process both the updated offer as well as the received answer
+                        console.log("Receiver answer from answerer: " + msg);
+                        remoteSessionDescription = new SessionDescription(msg.sdp);
+                        pc.setRemoteDescription(webkitPeerConnection00.SDP_ANSWER, remoteSessionDescription);
+                        pc.startIce({use_candidates:'all'});
+                    }
+                    else if (msg.type == "offer") {
+                        // if the answer corresponds to an updated offer (i.e. not the initial offer),
+                        // we need to process both the updated offer as well as the received answer
+                        console.log("Receiver offer: " + msg);
+                        for(var property in msg){
+                            console.log(property + ": " + msg[property]);
+                        }
+                        remoteSessionDescription = new SessionDescription(msg.sdp);
+                        //console.log("Properties of session description");
+                        //printProperties(sessionDescription);
+                        pc.setRemoteDescription(webkitPeerConnection00.SDP_OFFER, remoteSessionDescription);
+
+                        answer = pc.createAnswer(msg.sdp, {has_video: true, has_audio: true});
+                        //printProperties(answer);
+                        pc.setLocalDescription(webkitPeerConnection00.SDP_ANSWER, answer);
+                        console.log(pc.localDescription);
+                        console.log("Sending answer");
+                        signalingChannel.send(JSON.stringify({ "type": "answer", "sdp": answer.toSdp() }));
+                        pc.startIce({use_candidates:'all'});
+                    }
+                    else if(msg.type == "candidate"){
+                        //printProperties(msg.candidate);
+                        //var iceCandidate = new IceCandidate(msg.candidate);
+                        //console.log("Adding candidate to remote description " );
+                        var iceCandidate = new IceCandidate(msg.candidate.label, msg.candidate.sdp);
+                        //console.log(iceCandidate.toSdp());
+                        //printProperties(iceCandidate);
+                        pc.processIceMessage(iceCandidate);
+                        //remoteSessionDescription.addCandidate(iceCandidate);
+                        console.log("Received candidate: " + iceCandidate.toSdp());
+                    }
+                    else{
+                        console.log("Unsupported message type: " + msg.type);
+                    }
+                });
+    };
+
+    var openMediaSession = function(){
+        navigator.webkitGetUserMedia({"audio": true, "video": true},
+                onMediaSuccess,
+                onMediaError);
+
+    };
+</script>
+<div id="container">
+    <div id="local">
+        <video width="100%" height="100%" id="localVideo" autoplay>
+        </video>
+    </div>
+    <div id="remote">
+        <video width="100%" height="100%" id="remoteVideo" autoplay>
+        </video>
+    </div>
+    <div id="footer">
+    </div>
+</div>
+<a href="http://www.webrtc.org">
+    <img id="logo" alt="WebRTC" src="images/webrtc_black_20p.png">
+</a>
+</body>
+</html>
+
