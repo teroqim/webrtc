@@ -21,6 +21,8 @@ from google.appengine.ext import webapp
 from google.appengine.ext.webapp import template
 from google.appengine.ext.webapp.util import run_wsgi_app
 
+MAX_NR_USERS = 2
+
 def generate_random(len):
     word = ''
     for i in range(len):
@@ -40,61 +42,66 @@ def make_pc_config(stun_server):
         return "STUN stun.l.google.com:19302"
 
 class Room(db.Model):
-    """All the data we store for a room"""
-    user1 = db.StringProperty()
-    user2 = db.StringProperty()
+	
+    users = db.StringListProperty()
 
     def __str__(self):
         str = "["
-        if self.user1:
-            str += self.user1
-        if self.user2:
-            str += ", " + self.user2
+        if len(self.users) > 0:
+        	for u in self.users:
+        		str += ", " + u
         str += "]"
         return str
 
     def get_occupancy(self):
-        occupancy = 0
-        if self.user1:
-            occupancy += 1
-        if self.user2:
-            occupancy += 1
-        return occupancy
+        return len(self.users)
 
+	#Check how this is used
     def get_other_user(self, user):
-        if user == self.user1:
-            return self.user2
-        elif user == self.user2:
-            return self.user1
+        if user == self.users[0]:
+            return self.users[1]
+        elif user == self.users[1]:
+            return self.users[0]
         else:
             return None
 
     def has_user(self, user):
-        return (user and (user == self.user1 or user == self.user2))
+        return self.index_of(user) >= 0
+        
+    def index_of(self, user):
+    	index = -1
+    	if not user:
+    		return index
+    		
+    	for i in range(len(self.users)):
+    		if self.users[i] == user:
+    			index = i
+    			break
+        return index
 
     def add_user(self, user):
-        if not self.user1:
-            self.user1 = user
-        elif not self.user2:
-            self.user2 = user
-        else:
-            raise RuntimeError('room is full')
+    
+    	#Check if the user is already in the list
+    	if self.has_user(user):
+    		return
+    
+    	#Add new user if there is capacity
+    	if len(self.users) <= MAX_NR_USERS:
+    		self.users.append(user)
+    	else:
+    		raise RuntimeError('room is full')
+    	
         self.put()
 
     def remove_user(self, user):
-        if user == self.user2:
-            self.user2 = None
-        if user == self.user1:
-            if self.user2:
-                self.user1 = self.user2
-                self.user2 = None
-            else:
-                self.user1 = None
-        if self.get_occupancy() > 0:
+    	index = self.index_of(user)
+    	if index >= 0:
+    		self.users.remove(index)
+    		
+        if len(self.users > 0):
             self.put()
         else:
             self.delete()
-
 
 class ConnectPage(webapp.RequestHandler):
     def post(self):
