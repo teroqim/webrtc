@@ -1,10 +1,6 @@
-/**
- * Created with PyCharm.
- * User: omniboomer
- * Date: 2012-06-06
- * Time: 14.24
- * To change this template use File | Settings | File Templates.
- */
+/*
+* SignalingChannel handles communication with server, in this case the app engine sockets
+*/
 
 var onIncomingMessage = function(evt){console.log("Caling uninitialized onIncomingMessages");};
 

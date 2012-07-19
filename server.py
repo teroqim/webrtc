@@ -1,25 +1,18 @@
-#!/usr/bin/python2.4
-#
-# Copyright 2011 Google Inc. All Rights Reserved.
-
-# pylint: disable-msg=C6310
-
-"""WebRTC Demo
-
-This module demonstrates the WebRTC API by implementing a simple video chat app.
-"""
+#!/usr/bin/python2.7
 
 import datetime
 import logging
 import os
 import random
 import re
-import wsgiref.handlers
+import webapp2
+import sys
+
 from google.appengine.api import channel
 from google.appengine.ext import db
-from google.appengine.ext import webapp
 from google.appengine.ext.webapp import template
-from google.appengine.ext.webapp.util import run_wsgi_app
+
+MAX_NR_USERS = 2
 
 def generate_random(len):
     word = ''
@@ -40,70 +33,78 @@ def make_pc_config(stun_server):
         return "STUN stun.l.google.com:19302"
 
 class Room(db.Model):
-    """All the data we store for a room"""
-    user1 = db.StringProperty()
-    user2 = db.StringProperty()
+	
+    users = db.StringListProperty()
 
     def __str__(self):
         str = "["
-        if self.user1:
-            str += self.user1
-        if self.user2:
-            str += ", " + self.user2
+        if len(self.users) > 0:
+        	for u in self.users:
+        		str += ", " + u
         str += "]"
         return str
 
     def get_occupancy(self):
-        occupancy = 0
-        if self.user1:
-            occupancy += 1
-        if self.user2:
-            occupancy += 1
-        return occupancy
+        return len(self.users)
 
+	#Check how this is used
     def get_other_user(self, user):
-        if user == self.user1:
-            return self.user2
-        elif user == self.user2:
-            return self.user1
+        if user == self.users[0]:
+            return self.users[1]
+        elif user == self.users[1]:
+            return self.users[0]
         else:
             return None
 
     def has_user(self, user):
-        return (user and (user == self.user1 or user == self.user2))
+        return self.index_of(user) >= 0
+        
+    def index_of(self, user):
+    	index = -1
+    	if not user:
+    		return index
+    		
+    	for i in range(len(self.users)):
+    		if self.users[i] == user:
+    			index = i
+    			break
+        return index
 
     def add_user(self, user):
-        if not self.user1:
-            self.user1 = user
-        elif not self.user2:
-            self.user2 = user
-        else:
-            raise RuntimeError('room is full')
+    
+    	#Check if the user is already in the list
+    	if self.has_user(user):
+    		return
+    
+    	#Add new user if there is capacity
+    	if len(self.users) <= MAX_NR_USERS:
+    		self.users.append(user)
+    	else:
+    		raise RuntimeError('room is full')
+    	
         self.put()
 
     def remove_user(self, user):
-        if user == self.user2:
-            self.user2 = None
-        if user == self.user1:
-            if self.user2:
-                self.user1 = self.user2
-                self.user2 = None
-            else:
-                self.user1 = None
-        if self.get_occupancy() > 0:
-            self.put()
-        else:
-            self.delete()
+    	if not user:
+    		return
+    	try:
+    		logging.info('Removing user: ' + str(user))
+    		self.users.remove(user)
+    		if len(self.users) > 0:
+    			self.put()
+    		else:
+    			self.delete()
+    	except:
+    		logging.info("Silent error trying to delete user from room. " + str(sys.exc_info()))
 
-
-class ConnectPage(webapp.RequestHandler):
+class ConnectPage(webapp2.RequestHandler):
     def post(self):
         key = self.request.get('from')
         room_key, user = key.split('/');
         logging.info('User ' + user + ' connected to room ' + room_key)
 
 
-class DisconnectPage(webapp.RequestHandler):
+class DisconnectPage(webapp2.RequestHandler):
     def post(self):
         key = self.request.get('from')
         room_key, user = key.split('/');
@@ -120,7 +121,7 @@ class DisconnectPage(webapp.RequestHandler):
             logging.warning('Unknown room ' + room_key)
 
 
-class MessagePage(webapp.RequestHandler):
+class MessagePage(webapp2.RequestHandler):
     def post(self):
         message = self.request.body
         room_key = self.request.get('r')
@@ -141,7 +142,7 @@ class MessagePage(webapp.RequestHandler):
             logging.warning('Unknown room ' + room_key)
 
 
-class MainPage(webapp.RequestHandler):
+class MainPage(webapp2.RequestHandler):
     """The main UI page, renders the 'index.html' template."""
 
     def get(self):
@@ -206,28 +207,10 @@ class MainPage(webapp.RequestHandler):
         logging.info('User ' + user + ' added to room ' + room_key);
         logging.info('Room ' + room_key + ' has state ' + str(room))
 
-"""
-application = webapp.WSGIApplication([
-    ('/', MainPage),
-    ('/message', MessagePage),
-    ('/_ah/channel/connected/', ConnectPage),
-    ('/_ah/channel/disconnected/', DisconnectPage)
-], debug=True)
 
-
-def main():
-    run_wsgi_app(application)
-"""
-
-def main():
-    application = webapp.WSGIApplication(
+app = webapp2.WSGIApplication(
         [('/', MainPage),
             ('/message', MessagePage),
             ('/_ah/channel/connected/', ConnectPage),
             ('/_ah/channel/disconnected/', DisconnectPage)],
         debug=True)
-
-    wsgiref.handlers.CGIHandler().run(application)
-
-if __name__ == "__main__":
-    main()

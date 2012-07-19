@@ -1,7 +1,8 @@
 application: omniboomer-videoconference
 version: 4
-runtime: python
+runtime: python27
 api_version: 1
+threadsafe: yes
 
 handlers:
 - url: /html
@@ -17,7 +18,7 @@ handlers:
   static_dir: css
 
 - url: /.*
-  script: apprtc.py
+  script: server.app
   secure: always
   
 inbound_services:
