@@ -2,7 +2,9 @@
 * SignalingChannel handles communication with server, in this case the app engine sockets
 */
 
-var onIncomingMessage = function(evt){console.log("Caling uninitialized onIncomingMessages");};
+var onIncomingMessage = function(evt){console.log("Calling uninitialized onIncomingMessages");};
+
+var onOtherSideClosing = function(){};
 
 var debugLog = false;
 
@@ -21,7 +23,11 @@ function SignalingChannel(roomKey, userId, token){
     this.onChannelOpened = function() {
         debug('Channel opened.');
     }
-
+    
+    this.onOtherSideClosing = function(func){
+    	onOtherSideClosing = func;
+		//debug('Other side closed the connection');	
+	};
 
     this.onChannelMessage = function(message) {
         debug('S->C: ' + message.data);
@@ -30,6 +36,7 @@ function SignalingChannel(roomKey, userId, token){
                 onIncomingMessage(message);
             }
         } else {
+        	onOtherSideClosing();
             debug('Session terminated.');
         }
     }
@@ -65,14 +72,11 @@ function SignalingChannel(roomKey, userId, token){
     this.initialize = function(){
         debug("Opening channel.");
         this.channel = new goog.appengine.Channel(this.token);
-        var handler = {
-            onopen: this.onChannelOpened,
-            onmessage: this.onChannelMessage,
-            onerror: this.onChannelError,
-            onclose: this.onChannelClosed
-        };
-
-        this.socket = this.channel.open(handler);
+        this.socket = this.channel.open();
+        this.socket.onopen = this.onChannelOpened,
+        this.socket.onmessage =  this.onChannelMessage,
+        this.socket.onerror = this.onChannelError,
+        this.socket.onclose = this.onChannelClosed
     };
 
 }

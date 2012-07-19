@@ -36,10 +36,18 @@
         console.log("Initializing signaling channel");
         signalingChannel = new SignalingChannel('{{ room_id }}', '{{ me }}', '{{ token }}');
         signalingChannel.initialize();
+        
 
         openMediaSession();
 
+		window.onunload = function(){
+    		signalingChannel.close();
+    	};
     };
+    
+    
+
+	
 
     var onMediaError = function(error) {
         console.log("Failed to get access to local media. Error code was " + error.code);
@@ -90,6 +98,10 @@
                 pc.onopen = function(){
                     console.log("Session started");
                 };
+                
+                signalingChannel.onOtherSideClosing(function(){
+					remoteWebcam.src = null;
+				});
 
                 signalingChannel.onIncomingMessage(function (evt) {
                     var msg = JSON.parse(evt.data);

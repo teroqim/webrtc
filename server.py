@@ -23,7 +23,7 @@ def generate_random(len):
 def sanitize(key):
     return re.sub("[^a-zA-Z0-9\-]", "-", key);
 
-def make_token(room, user):
+def make_client_id(room, user):
     return room.key().id_or_name() + '/' + user
 
 def make_pc_config(stun_server):
@@ -109,7 +109,7 @@ class ConnectPage(webapp2.RequestHandler):
 
 class DisconnectPage(webapp2.RequestHandler):
     def post(self):
-        key = self.request.get('from')
+        key = self.request.get('from') #contains clientId
         room_id, user = key.split('/');
         logging.info('Removing user ' + user + ' from room ' + room_id)
         room = Room.get_by_key_name(room_id)
@@ -118,7 +118,7 @@ class DisconnectPage(webapp2.RequestHandler):
             room.remove_user(user)
             logging.info('Room ' + room_id + ' has state ' + str(room))
             if other_user:
-                channel.send_message(make_token(room, other_user), 'BYE')
+                channel.send_message(make_client_id(room, other_user), 'BYE')
                 logging.info('Sent BYE to ' + other_user)
         else:
             logging.warning('Unknown room ' + room_id)
@@ -133,13 +133,7 @@ class MessagePage(webapp2.RequestHandler):
             user = self.request.get('u')
             other_user = room.get_other_user(user)
             if other_user:
-                # special case the loopback scenario
-                if other_user == user:
-                    message = message.replace("\"OFFER\"",
-                        "\"ANSWER\",\n   \"answererSessionId\" : \"1\"")
-                    message = message.replace("a=crypto:0 AES_CM_128_HMAC_SHA1_32",
-                        "a=xrypto:0 AES_CM_128_HMAC_SHA1_32")
-                channel.send_message(make_token(room, other_user), message)
+                channel.send_message(make_client_id(room, other_user), message)
                 logging.info('Delivered message to user ' + other_user);
         else:
             logging.warning('Unknown room ' + room_id)
@@ -182,7 +176,7 @@ class MainPage(webapp2.RequestHandler):
             logging.info('Room ' + room_id + ' is full');
             return
 
-        token = channel.create_channel(room_id + '/' + user)
+        token = channel.create_channel(make_client_id(room, user))
         pc_config = make_pc_config('')
         logging.info('Room id: ' + str(room_id))
         template_values = {'token': token,
