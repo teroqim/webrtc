@@ -34,7 +34,7 @@
 
         //Create signaling channel
         console.log("Initializing signaling channel");
-        signalingChannel = new SignalingChannel('{{ room_key }}', '{{ me }}', '{{ token }}');
+        signalingChannel = new SignalingChannel('{{ room_id }}', '{{ me }}', '{{ token }}');
         signalingChannel.initialize();
 
         openMediaSession();
@@ -111,7 +111,7 @@
                         }
                         remoteSessionDescription = new SessionDescription(msg.sdp);
                         //console.log("Properties of session description");
-                        //printProperties(sessionDescription);
+                        printProperties(remoteSessionDescription);
                         pc.setRemoteDescription(webkitPeerConnection00.SDP_OFFER, remoteSessionDescription);
 
                         answer = pc.createAnswer(msg.sdp, {has_video: true, has_audio: true});
@@ -123,12 +123,12 @@
                         pc.startIce({use_candidates:'all'});
                     }
                     else if(msg.type == "candidate"){
-                        //printProperties(msg.candidate);
+                        printProperties(msg.candidate);
                         //var iceCandidate = new IceCandidate(msg.candidate);
                         //console.log("Adding candidate to remote description " );
                         var iceCandidate = new IceCandidate(msg.candidate.label, msg.candidate.sdp);
-                        //console.log(iceCandidate.toSdp());
-                        //printProperties(iceCandidate);
+                        console.log(iceCandidate.toSdp());
+                        printProperties(iceCandidate);
                         pc.processIceMessage(iceCandidate);
                         //remoteSessionDescription.addCandidate(iceCandidate);
                         console.log("Received candidate: " + iceCandidate.toSdp());

@@ -49,6 +49,9 @@ class Room(db.Model):
 
 	#Check how this is used
     def get_other_user(self, user):
+    	if len(self.users) <= 1:
+    		return None
+    		
         if user == self.users[0]:
             return self.users[1]
         elif user == self.users[1]:
@@ -100,32 +103,32 @@ class Room(db.Model):
 class ConnectPage(webapp2.RequestHandler):
     def post(self):
         key = self.request.get('from')
-        room_key, user = key.split('/');
-        logging.info('User ' + user + ' connected to room ' + room_key)
+        room_id, user = key.split('/');
+        logging.info('User ' + user + ' connected to room ' + room_id)
 
 
 class DisconnectPage(webapp2.RequestHandler):
     def post(self):
         key = self.request.get('from')
-        room_key, user = key.split('/');
-        logging.info('Removing user ' + user + ' from room ' + room_key)
-        room = Room.get_by_key_name(room_key)
+        room_id, user = key.split('/');
+        logging.info('Removing user ' + user + ' from room ' + room_id)
+        room = Room.get_by_key_name(room_id)
         if room and room.has_user(user):
             other_user = room.get_other_user(user)
             room.remove_user(user)
-            logging.info('Room ' + room_key + ' has state ' + str(room))
+            logging.info('Room ' + room_id + ' has state ' + str(room))
             if other_user:
                 channel.send_message(make_token(room, other_user), 'BYE')
                 logging.info('Sent BYE to ' + other_user)
         else:
-            logging.warning('Unknown room ' + room_key)
+            logging.warning('Unknown room ' + room_id)
 
 
 class MessagePage(webapp2.RequestHandler):
     def post(self):
         message = self.request.body
-        room_key = self.request.get('r')
-        room = Room.get_by_key_name(room_key)
+        room_id = self.request.get('r')
+        room = Room.get_by_key_name(room_id)
         if room:
             user = self.request.get('u')
             other_user = room.get_other_user(user)
@@ -139,7 +142,7 @@ class MessagePage(webapp2.RequestHandler):
                 channel.send_message(make_token(room, other_user), message)
                 logging.info('Delivered message to user ' + other_user);
         else:
-            logging.warning('Unknown room ' + room_key)
+            logging.warning('Unknown room ' + room_id)
 
 
 class MainPage(webapp2.RequestHandler):
@@ -148,34 +151,26 @@ class MainPage(webapp2.RequestHandler):
     def get(self):
         """Renders the main page. When this page is shown, we create a new
  channel to push asynchronous updates to the client."""
-        room_key = sanitize(self.request.get('r'));
-        debug = self.request.get('debug')
-        stun_server = self.request.get('ss');
-        if not room_key:
-            room_key = generate_random(8)
-            redirect = '/?r=' + room_key
-            if debug:
-                redirect += ('&debug=' + debug)
-            if stun_server:
-                redirect += ('&ss=' + stun_server)
+        room_id = sanitize(self.request.get('r'));
+        if not room_id:
+        	#Redirect visitor to new room with random id
+            room_id = generate_random(8)
+            redirect = '/?r=' + room_id
             self.redirect(redirect)
             logging.info('Redirecting visitor to base URL to ' + redirect)
             return
 
         user = None
         initiator = 0
-        room = Room.get_by_key_name(room_key)
-        if not room and debug != "full":
+        #Get room from datastore
+        room = Room.get_by_key_name(room_id)
+        if not room: 
             # New room.
             user = generate_random(8)
-            room = Room(key_name = room_key)
+            room = Room(key_name = room_id)
             room.add_user(user)
-            if debug != "loopback":
-                initiator = 0
-            else:
-                room.add_user(user)
-                initiator = 1
-        elif room and room.get_occupancy() == 1 and debug != "full":
+            initiator = 0
+        elif room and room.get_occupancy() == 1: 
             # 1 occupant.
             user = generate_random(8)
             room.add_user(user)
@@ -183,29 +178,23 @@ class MainPage(webapp2.RequestHandler):
         else:
             # 2 occupants (full).
             path = os.path.join(os.path.dirname(__file__), 'full.html')
-            self.response.out.write(template.render(path, { 'room_key': room_key }));
-            logging.info('Room ' + room_key + ' is full');
+            self.response.out.write(template.render(path, { 'room_id': room_id }));
+            logging.info('Room ' + room_id + ' is full');
             return
 
-        room_link = 'http://localhost:8080/?r=' + room_key
-        if debug:
-            room_link += ('&debug=' + debug)
-        if stun_server:
-            room_link += ('&ss=' + stun_server)
-
-        token = channel.create_channel(room_key + '/' + user)
-        pc_config = make_pc_config(stun_server)
+        token = channel.create_channel(room_id + '/' + user)
+        pc_config = make_pc_config('')
+        logging.info('Room id: ' + str(room_id))
         template_values = {'token': token,
                            'me': user,
-                           'room_key': room_key,
-                           'room_link': room_link,
+                           'room_id': room_id,
                            'initiator': initiator,
                            'pc_config': pc_config
         }
         path = os.path.join(os.path.dirname(__file__), 'index.html')
         self.response.out.write(template.render(path, template_values))
-        logging.info('User ' + user + ' added to room ' + room_key);
-        logging.info('Room ' + room_key + ' has state ' + str(room))
+        logging.info('User ' + user + ' added to room ' + room_id);
+        logging.info('Room ' + room_id + ' has state ' + str(room))
 
 
 app = webapp2.WSGIApplication(
